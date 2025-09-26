@@ -1,0 +1,8 @@
+[sections]
+swift_modhash:
+    input = ".swift_modhash"
+    output = ".rodata"
+    owner = main
+    placement = "flash_rodata"
+    keep = true
+    align = 4
