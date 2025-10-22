@@ -38,9 +38,15 @@ var s_temp_reading = UInt16()
 
 
 
-func hex(_ x: some BinaryInteger) -> String {
-    let s = String(x, radix: 16, uppercase: true)
-    return s
+func hex(_ x: UInt16) -> String {
+    if x < 4095 {
+        return "0\(String(x, radix: 16, uppercase: true))"
+    }
+    else {
+        return String(x, radix: 16, uppercase: true)
+    }
+    //String(format: "%04X", x) is not reasonably available in embedded swift atm
+
 }
 
 struct rmt_ir_nec_encoder_t {
@@ -172,7 +178,6 @@ func rmt_new_ir_nec_encoder(
     
 
     let newBytesEncoderErr = rmt_new_bytes_encoder(&bytes_encoder_config, &nec_encoder.pointee.bytes_encoder)
-
     if newBytesEncoderErr != ESP_OK {
         logInfo("Encoder", "create bytes encoder failed")
         return newBytesEncoderErr
@@ -254,7 +259,7 @@ func rmt_encode_ir_nec(
         fallthrough
     case RMT_ENCODING_MEM_FULL: // send command
         var command = scan_code.pointee.command
-        encoded_symbols += bytes_encoder.pointee.encode(bytes_encoder, channel, &command, Int(MemoryLayout<UInt16>.stride), &session_state);
+        encoded_symbols += bytes_encoder.pointee.encode(bytes_encoder, channel, &command, Int(MemoryLayout<UInt16>.stride), &session_state)
         if ((session_state.rawValue & RMT_ENCODING_COMPLETE.rawValue) != 0 ) {
             nec_encoder.pointee.state.rawValue = 3
         }
@@ -360,13 +365,9 @@ public func nec_parse_logic1_not(_ rmt_nec_symbols: UnsafePointer<rmt_symbol_wor
 }
 
 public func nec_parse_frame(_ rmt_nec_symbols: UnsafePointer<rmt_symbol_word_t>) -> Bool {
-    //rmt_symbol_word_t *cur = rmt_nec_symbols;
-   // let cur = rmt_nec_symbols: UnsafeMutablePointer<rmt_symbol_word_t>
     
     let cur = UnsafeBufferPointer<rmt_symbol_word_t>(start:rmt_nec_symbols, count: 64)
     var curIndex = Int(0)
-    //let cur = Span<rmt_symbol_word_t>(_unsafeStart:rmt_nec_symbols, count: 32)
-    //let cur2 = cur.span
     
     var address:UInt16 = 0
     var command:UInt16 = 0
@@ -375,7 +376,7 @@ public func nec_parse_frame(_ rmt_nec_symbols: UnsafePointer<rmt_symbol_word_t>)
     let valid_leading_code = nec_check_in_range(cur[curIndex].duration0, NEC_LEADING_CODE_DURATION_0) &&
     nec_check_in_range(cur[curIndex].duration1, NEC_LEADING_CODE_DURATION_1)
     if (!valid_leading_code) {
-        print("invalid leading code or out of range")
+        //print("invalid leading code or out of range")
         return false
     }
     curIndex += 1
@@ -386,7 +387,7 @@ public func nec_parse_frame(_ rmt_nec_symbols: UnsafePointer<rmt_symbol_word_t>)
         } else if (nec_parse_logic0(cur.baseAddress!.advanced(by: curIndex))) {
             address &= ~(1 << i)
         } else {
-            print("address not logic 0 or 1")
+            //print("adr not 0 or 1")
             return false
         }
         curIndex += 1
@@ -398,7 +399,7 @@ public func nec_parse_frame(_ rmt_nec_symbols: UnsafePointer<rmt_symbol_word_t>)
         } else if (nec_parse_logic0(cur.baseAddress!.advanced(by: curIndex))) {
             command &= ~(1 << i)
         } else {
-            print("command not logic 0 or 1")
+            //print("cmd 0 or 1")
             return false
             
         }
@@ -412,132 +413,44 @@ public func nec_parse_frame(_ rmt_nec_symbols: UnsafePointer<rmt_symbol_word_t>)
 }
 
 
-func temp_parse_frame15(_ rmt_nec_symbols: UnsafePointer<rmt_symbol_word_t>) -> Bool {
-    //I think 196 range with 14 bits
-    let cur = UnsafeBufferPointer<rmt_symbol_word_t>(start:rmt_nec_symbols, count: 64)
-    var curIndex = Int(0)
-    var temp:UInt16 = 0
-    
-    
-    for i in 0..<14 {
-        if (nec_parse_logic1(cur.baseAddress!.advanced(by: curIndex))) {
-            temp |= 1 << i
-        } else if (nec_parse_logic0(cur.baseAddress!.advanced(by: curIndex))) {
-            temp &= ~(1 << i)
-        } else {
-            print("temp not logic 0 or 1")
-            return false
-        }
-        curIndex += 1
-    }
-
-    s_temp_reading = temp
-    return true
-    
-}
-
-func temp_parse_frame16(_ rmt_nec_symbols: UnsafePointer<rmt_symbol_word_t>) -> Bool {
-    //I think 196 range with 14 bits
-    let cur = UnsafeBufferPointer<rmt_symbol_word_t>(start:rmt_nec_symbols, count: 64)
-    var curIndex = Int(0)
-    var temp:UInt16 = 0
-    
-    //tried to swap logic1 and logic0 ¯\_(ツ)_/¯
-    for i in 0..<15 {
-        if (nec_parse_logic1(cur.baseAddress!.advanced(by: curIndex))) {
-            temp |= 1 << i
-        } else if (nec_parse_logic0(cur.baseAddress!.advanced(by: curIndex))) {
-            temp &= ~(1 << i)
-        } else {
-            print("temp not logic 1 or 1")
-            return false
-        }
-        curIndex += 1
-    }
-    
-    s_temp_reading = temp
-    return true
-    
-}
-func temp_parse_frame17(_ rmt_nec_symbols: UnsafePointer<rmt_symbol_word_t>) -> Bool {
-    //I think 196 range with 14 bits
-    let cur = UnsafeBufferPointer<rmt_symbol_word_t>(start:rmt_nec_symbols, count: 64)
-    var curIndex = Int(0)
-    var temp:UInt16 = 0
-    
-    //tried to swap logic1 and logic0 ¯\_(ツ)_/¯
-    for i in 0..<16 {
-        if (nec_parse_logic1_not(cur.baseAddress!.advanced(by: curIndex))) {
-            temp |= 1 << i
-        } else if (nec_parse_logic0_not(cur.baseAddress!.advanced(by: curIndex))) {
-            temp &= ~(1 << i)
-        } else {
-            print("temp not logic 1 or 1")
-            return false
-        }
-        curIndex += 1
-    }
-    
-    s_temp_reading = temp
-    return true
-    
-}
-
 func nec_parse_frame_repeat(_ rmt_nec_symbols: UnsafePointer<rmt_symbol_word_t>) -> Bool {
     return nec_check_in_range(rmt_nec_symbols.pointee.duration0, NEC_REPEAT_CODE_DURATION_0) &&
     nec_check_in_range(rmt_nec_symbols.pointee.duration1, NEC_REPEAT_CODE_DURATION_1)
 }
 
-func parse_nec_frame(_ rmt_nec_symbols: UnsafePointer<rmt_symbol_word_t>, _ symbol_num: size_t) {
-    print("Frame start---")
+func parse_nec_frame(_ rmt_nec_symbols: UnsafePointer<rmt_symbol_word_t>, _ symbol_num: size_t) -> ir_nec_scan_code_t? {
+
 
     let cur = UnsafeBufferPointer<rmt_symbol_word_t>(start:rmt_nec_symbols, count: symbol_num)
+//  print("Frame start---")
+//   Print out each received symbol for debug
+//    for word in cur {
+//        print("{\(word.level0):\(word.duration0)},{\(word.level1):\( word.duration1)}")
+//    }
+//  print("---Frame end: \(symbol_num) symbols")
     
-   
-    for word in cur {
-        print("{\(word.level0):\(word.duration0)},{\(word.level1):\( word.duration1)}")
-    }
-    
-    print("---Frame end: \(symbol_num) symbols")
     // decode RMT symbols
     switch (symbol_num) {
     case 34: // NEC normal frame
         if (nec_parse_frame(rmt_nec_symbols)) {
-            
-            print("Address=\(hex(s_nec_code_address)), Command=\(hex(s_nec_code_command))\r\n")
+            //print("Address=\(hex(s_nec_code_address)), Command=\(hex(s_nec_code_command))\r\n")
+            return ir_nec_scan_code_t(address: s_nec_code_address, command: s_nec_code_command)
         }
+//        else{
+//            print("Not NEC logic")
+//        }
         break
-//    case 15://My Kenmore temp reading
-//        if (temp_parse_frame15(rmt_nec_symbols)) {
-//            //logInfo("Temp Reading:", hex(s_temp_reading))
-//
-//            print("Temp Reading: \(hex(s_temp_reading))\r\n")
-//        }
-//        break;
-//    case 16://My Kenmore temp reading
-//        if (temp_parse_frame16(rmt_nec_symbols)) {
-//            logInfo("Temp Reading:", hex(s_temp_reading))
-//            
-//            //print("Temp Reading: \(hex(s_temp_reading))\r\n")
-//        }
-//        break;
-//    case 17://My Kenmore temp reading
-//        if (temp_parse_frame17(rmt_nec_symbols)) {
-//            logInfo("Temp Reading:", hex(s_temp_reading))
-//            
-//            //print("Temp Reading: \(hex(s_temp_reading))\r\n")
-//        }
-
-        
     case 2: // NEC repeat frame
         if (nec_parse_frame_repeat(rmt_nec_symbols)) {
-            print("Address=\(hex(s_nec_code_address)), Command=\(hex(s_nec_code_command)), repeat\r\n")
+            //print("Address=\(hex(s_nec_code_address)), Command=\(hex(s_nec_code_command)), repeat\r\n")
+            return ir_nec_scan_code_t(address: s_nec_code_address, command: s_nec_code_command)
         }
         break
     default:
         print("Unknown frame\r\n")
         break
     }
+    return nil
 }
 
 func rmt_rx_done_callback(_ channel: rmt_channel_handle_t?, edata: UnsafePointer<rmt_rx_done_event_data_t>?, user_data: UnsafeMutableRawPointer?) -> Bool {
@@ -552,5 +465,5 @@ func rmt_rx_done_callback(_ channel: rmt_channel_handle_t?, edata: UnsafePointer
 }
 
 public func pdMS_TO_TICKS(_ ms: UInt32) -> TickType_t {
-    return TickType_t((UInt64(ms) * UInt64(configTICK_RATE_HZ)) / 1000)
+    return TickType_t((UInt32(ms) * UInt32(configTICK_RATE_HZ)) / 1000)
 }
