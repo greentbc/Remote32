@@ -30,7 +30,29 @@ enum acCMD: UInt16 {
     
 }
 
-
+enum videoCMD: UInt16 {
+    case on,off = 0xED12
+    
+    //OutPut A
+    //In 1 - Out A
+    case A1 = 0xFE01
+    //In 2 - Out A
+    case A2 = 0xFC03
+    //In 3 - Out A
+    case A3 = 0xFB04
+    //In 4 - Out A
+    case A4 = 0xF906
+    
+    //OutPut B
+    //In 1 - Out B
+    case B1 = 0xF807
+    //In 2 - Out B
+    case B2 = 0xF604
+    //In 3 - Out AB
+    case B3 = 0xF50A
+    //In 4 - Out B
+    case B4 = 0xE01F
+}
 
 
 func cmdToTempString(_ cmd: UInt16) -> String {
@@ -244,13 +266,19 @@ func main() {
                     fatalError("start receive failed")
                 }
             } else {
+//                var scan_code = ir_nec_scan_code_t(
+//                    address: 0xF508,
+//                    command: 0xF10E
+//                )
                 var scan_code = ir_nec_scan_code_t(
-                    address: 0xF508,
-                    command: 0xF10E
+                    address: 0x7F80,
+                    command: 0xF807
                 )
-//                guard rmt_transmit(tx_channel, nec_encoder, &scan_code, MemoryLayout<ir_nec_scan_code_t>.stride, &transmit_config) == ESP_OK else {
-//                    fatalError("rmt_transmit failed")
-//                }
+                if (false){
+                    guard rmt_transmit(tx_channel, nec_encoder, &scan_code, MemoryLayout<ir_nec_scan_code_t>.stride, &transmit_config) == ESP_OK else {
+                        fatalError("rmt_transmit failed")
+                    }
+                }
                 
             }
         }

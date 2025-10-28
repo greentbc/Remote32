@@ -21,16 +21,17 @@ extension rmt_symbol_word_t {
 let IR_RESOLUTION_HZ = UInt32(    1000000) // 1MHz resolution, 1 tick = 1us
 let IR_RX_GPIO_NUM = gpio_num_t(  19)
 let IR_TX_GPIO_NUM = gpio_num_t(  18)
-let IR_NEC_DECODE_MARGIN = UInt32(200)
+let IR_NEC_DECODE_MARGIN = UInt16(200)
 
-let NEC_LEADING_CODE_DURATION_0 = UInt32( 9000)
-let NEC_LEADING_CODE_DURATION_1 = UInt32( 4500)
-let NEC_PAYLOAD_ZERO_DURATION_0 = UInt32( 560)
-let NEC_PAYLOAD_ZERO_DURATION_1 = UInt32( 560)
-let NEC_PAYLOAD_ONE_DURATION_0  = UInt32( 560)
-let NEC_PAYLOAD_ONE_DURATION_1  = UInt32( 1690)
-let NEC_REPEAT_CODE_DURATION_0  = UInt32( 9000)
-let NEC_REPEAT_CODE_DURATION_1  = UInt32( 2250)
+let NEC_LEADING_CODE_DURATION_0 = UInt16( 9000)//HDMI switcher seems to do 9800, not 9000 like NEC
+let NEC_LEADING_CODE_DURATION_1 = UInt16( 4500)
+let NEC_PAYLOAD_ZERO_DURATION_0 = UInt16( 560)
+let NEC_PAYLOAD_ZERO_DURATION_1 = UInt16( 560)
+let NEC_PAYLOAD_ONE_DURATION_0  = UInt16( 560)
+let NEC_PAYLOAD_END_DURATION_0  = UInt16( 560)
+let NEC_PAYLOAD_ONE_DURATION_1  = UInt16( 1690)
+let NEC_REPEAT_CODE_DURATION_0  = UInt16( 9000)
+let NEC_REPEAT_CODE_DURATION_1  = UInt16( 2250)
 
 var s_nec_code_address = UInt16()
 var s_nec_code_command = UInt16()
@@ -109,7 +110,7 @@ func rmt_new_ir_nec_encoder(
     var ret = ESP_OK
    
     
-    guard let config = config, var retEncoder = retEncoder else {
+    guard let config = config, let retEncoder = retEncoder else {
         logInfo("Encoder", "invalid argument")
         return ESP_ERR_INVALID_ARG
     }
@@ -142,9 +143,9 @@ func rmt_new_ir_nec_encoder(
     nec_encoder.pointee.nec_leading_symbol = rmt_symbol_word_t(
         val: symbolWordToBits(
             level0: true,
-            duration0: 9000 * UInt16(config.pointee.resolution / 1000000),
+            duration0: NEC_LEADING_CODE_DURATION_0 * UInt16(config.pointee.resolution / 1000000),
             level1: false,
-            duration1: 4500 * UInt16(config.pointee.resolution / 1000000)
+            duration1: NEC_LEADING_CODE_DURATION_1 * UInt16(config.pointee.resolution / 1000000)
         )
     )
 //
@@ -152,7 +153,7 @@ func rmt_new_ir_nec_encoder(
     nec_encoder.pointee.nec_ending_symbol = rmt_symbol_word_t(
         val: symbolWordToBits(
             level0: true,
-            duration0: 560 * UInt16(config.pointee.resolution / 1000000),
+            duration0: NEC_PAYLOAD_END_DURATION_0 * UInt16(config.pointee.resolution / 1000000),
             level1: false,
             duration1: 0x7FFF
             )
@@ -161,16 +162,16 @@ func rmt_new_ir_nec_encoder(
     var bytes_encoder_config = rmt_bytes_encoder_config_t(
         bit0: rmt_symbol_word_t(val:symbolWordToBits(
             level0: true,
-            duration0: 560 * UInt16(config.pointee.resolution / 1000000),
+            duration0: NEC_PAYLOAD_ZERO_DURATION_1 * UInt16(config.pointee.resolution / 1000000),
             level1: false,
-            duration1: 560 * UInt16(config.pointee.resolution / 1000000)
+            duration1: NEC_PAYLOAD_ZERO_DURATION_1 * UInt16(config.pointee.resolution / 1000000)
         )
         ),
         bit1: rmt_symbol_word_t(val:symbolWordToBits(
             level0: true,
-            duration0: 560 * UInt16(config.pointee.resolution / 1000000),
+            duration0: NEC_PAYLOAD_ONE_DURATION_0 * UInt16(config.pointee.resolution / 1000000),
             level1: false,
-            duration1: 1690 * UInt16(config.pointee.resolution / 1000000)
+            duration1: NEC_PAYLOAD_ONE_DURATION_1 * UInt16(config.pointee.resolution / 1000000)
         )
         ),
         flags: rmt_bytes_encoder_config_t.__Unnamed_struct_flags(msb_first: 0)
@@ -340,7 +341,7 @@ func rmt_ir_nec_encoder_reset(_ encoder: UnsafeMutablePointer<rmt_encoder_t>?) -
 
 
 
-public func nec_check_in_range(_ signal_duration: UInt16, _ spec_duration: UInt32) -> Bool {
+public func nec_check_in_range(_ signal_duration: UInt16, _ spec_duration: UInt16) -> Bool {
     return (signal_duration < (spec_duration + IR_NEC_DECODE_MARGIN)) &&
     (signal_duration > (spec_duration - IR_NEC_DECODE_MARGIN))
 }
@@ -423,11 +424,6 @@ func parse_nec_frame(_ rmt_nec_symbols: UnsafePointer<rmt_symbol_word_t>, _ symb
 
     let cur = UnsafeBufferPointer<rmt_symbol_word_t>(start:rmt_nec_symbols, count: symbol_num)
 //  print("Frame start---")
-//   Print out each received symbol for debug
-//    for word in cur {
-//        print("{\(word.level0):\(word.duration0)},{\(word.level1):\( word.duration1)}")
-//    }
-//  print("---Frame end: \(symbol_num) symbols")
     
     // decode RMT symbols
     switch (symbol_num) {
@@ -436,9 +432,13 @@ func parse_nec_frame(_ rmt_nec_symbols: UnsafePointer<rmt_symbol_word_t>, _ symb
             //print("Address=\(hex(s_nec_code_address)), Command=\(hex(s_nec_code_command))\r\n")
             return ir_nec_scan_code_t(address: s_nec_code_address, command: s_nec_code_command)
         }
-//        else{
-//            print("Not NEC logic")
-//        }
+        else{
+            //   Print out each received symbol for debug
+            for word in cur {
+                print("{\(word.level0):\(word.duration0)},{\(word.level1):\( word.duration1)}")
+            }
+            print("---Frame end: \(symbol_num) symbols\r\n")
+        }
         break
     case 2: // NEC repeat frame
         if (nec_parse_frame_repeat(rmt_nec_symbols)) {
