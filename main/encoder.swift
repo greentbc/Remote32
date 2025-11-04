@@ -5,9 +5,6 @@
 //  Created by Tyler Stiffler on 9/30/25.
 //
 
-///TODO: Add defer/error things for rmt_new_ir_nec_encoder
-
-
 
 extension rmt_symbol_word_t {
     // Read-only views of the fields
@@ -16,27 +13,6 @@ extension rmt_symbol_word_t {
     var duration1: UInt16 { UInt16((val >> 16) & 0x7FFF) }             // bits 16..30
     var level1: Bool      { ((val >> 31) & 0x1) != 0 }                 // bit 31
 }
-
-
-let IR_RESOLUTION_HZ = UInt32(    1000000) // 1MHz resolution, 1 tick = 1us
-let IR_RX_GPIO_NUM = gpio_num_t(  19)
-let IR_TX_GPIO_NUM = gpio_num_t(  18)
-let IR_NEC_DECODE_MARGIN = UInt16(200)
-
-let NEC_LEADING_CODE_DURATION_0 = UInt16( 9000)//HDMI switcher seems to do 9800, not 9000 like NEC
-let NEC_LEADING_CODE_DURATION_1 = UInt16( 4500)
-let NEC_PAYLOAD_ZERO_DURATION_0 = UInt16( 560)
-let NEC_PAYLOAD_ZERO_DURATION_1 = UInt16( 560)
-let NEC_PAYLOAD_ONE_DURATION_0  = UInt16( 560)
-let NEC_PAYLOAD_END_DURATION_0  = UInt16( 560)
-let NEC_PAYLOAD_ONE_DURATION_1  = UInt16( 1690)
-let NEC_REPEAT_CODE_DURATION_0  = UInt16( 9000)
-let NEC_REPEAT_CODE_DURATION_1  = UInt16( 2250)
-
-var s_nec_code_address = UInt16()
-var s_nec_code_command = UInt16()
-var s_temp_reading = UInt16()
-
 
 
 func hex(_ x: UInt16) -> String {
@@ -72,13 +48,9 @@ struct ir_nec_encoder_config_t {
 
 
 func logInfo(_ tag: String, _ message: String) {
-    //tag.withCString { cTag in
-    //message.withCString { cMsg in
     // Logs printable characters, split into lines of up to 16 chars
-    let n = UInt16(message.utf8.count)
-    esp_log_buffer_char_internal(tag, message, n, ESP_LOG_INFO)
-    // }
-    //}
+    esp_log_buffer_char_internal(tag, message, UInt16(message.utf8.count), ESP_LOG_INFO)
+
 }
 
 
@@ -90,8 +62,6 @@ func symbolWordToBits(
 ) -> UInt32 {
     
     var val : UInt32 = (level1 ? 1 : 0) << 31
-    // return val
-    //var duration1: UInt16 { UInt16((val >> 16) & 0x7FFF) }
     val =  (UInt32(duration1) << 16) | (val)
     val =  (UInt32(level0 ? 1 : 0) << 15) | (val)
     val =  (UInt32(duration0) << 0) | (val)
@@ -128,16 +98,15 @@ func rmt_new_ir_nec_encoder(
     nec_encoder.pointee.base.encode = rmt_encode_ir_nec
     nec_encoder.pointee.base.del = rmt_del_ir_nec_encoder
     nec_encoder.pointee.base.reset = rmt_ir_nec_encoder_reset
-//
     var copy_encoder_config = rmt_copy_encoder_config_t()
 
     let newCopyEncoderErr = rmt_new_copy_encoder(&copy_encoder_config, &nec_encoder.pointee.copy_encoder)
     if newCopyEncoderErr != ESP_OK {
+        rmt_del_encoder(nec_encoder.pointee.copy_encoder)
+        free(nec_encoder)
         logInfo("Encoder", "create copy encoder failed")
         return newCopyEncoderErr
     }
-
-
 
     //use initialize(to:) if leading symbol isn't init when nec_encoder is
     nec_encoder.pointee.nec_leading_symbol = rmt_symbol_word_t(
@@ -148,7 +117,6 @@ func rmt_new_ir_nec_encoder(
             duration1: NEC_LEADING_CODE_DURATION_1 * UInt16(config.pointee.resolution / 1000000)
         )
     )
-//
 
     nec_encoder.pointee.nec_ending_symbol = rmt_symbol_word_t(
         val: symbolWordToBits(
@@ -162,7 +130,7 @@ func rmt_new_ir_nec_encoder(
     var bytes_encoder_config = rmt_bytes_encoder_config_t(
         bit0: rmt_symbol_word_t(val:symbolWordToBits(
             level0: true,
-            duration0: NEC_PAYLOAD_ZERO_DURATION_1 * UInt16(config.pointee.resolution / 1000000),
+            duration0: NEC_PAYLOAD_ZERO_DURATION_0 * UInt16(config.pointee.resolution / 1000000),
             level1: false,
             duration1: NEC_PAYLOAD_ZERO_DURATION_1 * UInt16(config.pointee.resolution / 1000000)
         )
@@ -180,6 +148,9 @@ func rmt_new_ir_nec_encoder(
 
     let newBytesEncoderErr = rmt_new_bytes_encoder(&bytes_encoder_config, &nec_encoder.pointee.bytes_encoder)
     if newBytesEncoderErr != ESP_OK {
+        rmt_del_encoder(nec_encoder.pointee.bytes_encoder)
+        rmt_del_encoder(nec_encoder.pointee.copy_encoder)
+        free(nec_encoder)
         logInfo("Encoder", "create bytes encoder failed")
         return newBytesEncoderErr
     }
@@ -187,17 +158,6 @@ func rmt_new_ir_nec_encoder(
     retEncoder.pointee = UnsafeMutablePointer(&nec_encoder.pointee.base)//Likely problem with this
     logInfo("impro", "Where retEncoder is questionable")
     return ESP_OK
-//err:
-//    if (nec_encoder) {
-//        if (nec_encoder->bytes_encoder) {
-//            rmt_del_encoder(nec_encoder->bytes_encoder);
-//        }
-//        if (nec_encoder->copy_encoder) {
-//            rmt_del_encoder(nec_encoder->copy_encoder);
-//        }
-//        free(nec_encoder);
-//    }
- //   return ret
 }
 
 
@@ -423,7 +383,6 @@ func parse_nec_frame(_ rmt_nec_symbols: UnsafePointer<rmt_symbol_word_t>, _ symb
 
 
     let cur = UnsafeBufferPointer<rmt_symbol_word_t>(start:rmt_nec_symbols, count: symbol_num)
-//  print("Frame start---")
     
     // decode RMT symbols
     switch (symbol_num) {
@@ -442,12 +401,12 @@ func parse_nec_frame(_ rmt_nec_symbols: UnsafePointer<rmt_symbol_word_t>, _ symb
         break
     case 2: // NEC repeat frame
         if (nec_parse_frame_repeat(rmt_nec_symbols)) {
-            //print("Address=\(hex(s_nec_code_address)), Command=\(hex(s_nec_code_command)), repeat\r\n")
+            print("Repeat Code for Address=\(hex(s_nec_code_address)), Command=\(hex(s_nec_code_command))\r\n")
             return ir_nec_scan_code_t(address: s_nec_code_address, command: s_nec_code_command)
         }
         break
     default:
-        print("Unknown frame\r\n")
+        print("\(symbol_num) symbols. Unknown frame\r\n")
         break
     }
     return nil

@@ -67,4 +67,5 @@ target_sources(${COMPONENT_LIB}
     PRIVATE
     Main.swift
     encoder.swift
+    Remote.swift
 )
