@@ -77,8 +77,6 @@ func rmt_new_ir_nec_encoder(
     _ config: UnsafePointer<ir_nec_encoder_config_t>?,
     _ retEncoder: UnsafeMutablePointer<rmt_encoder_handle_t>?
 ) -> esp_err_t {
-    var ret = ESP_OK
-   
     
     guard let config = config, let retEncoder = retEncoder else {
         logInfo("Encoder", "invalid argument")

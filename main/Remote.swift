@@ -13,7 +13,7 @@ let IR_RX_GPIO_NUM = gpio_num_t(  19)
 let IR_TX_GPIO_NUM = gpio_num_t(  18)
 let IR_NEC_DECODE_MARGIN = UInt16(200)
 
-let NEC_LEADING_CODE_DURATION_0 = UInt16( 9000)//HDMI switcher remote seems to do 9800, not 9000 like NEC
+let NEC_LEADING_CODE_DURATION_0 = UInt16( 9700)//HDMI switcher remote seems to do 9800, not 9000 like NEC
 let NEC_LEADING_CODE_DURATION_1 = UInt16( 4500)
 let NEC_PAYLOAD_ZERO_DURATION_0 = UInt16( 560)
 let NEC_PAYLOAD_ZERO_DURATION_1 = UInt16( 560)
@@ -60,6 +60,15 @@ class IRRemote {
         }
     }
     
+    func switchHDMI(_ cmd: videoCMD) {
+        var scan_code = ir_nec_scan_code_t(
+            address: irAddresses.HDMI.rawValue,
+            command: cmd.rawValue
+        )
+        
+        transmit(scan_code: &scan_code, doubleSend: true)
+    }
+    
     
     
 }
@@ -74,14 +83,14 @@ enum irAddresses: UInt16 {
     case AC = 0xF508
 }
 
-enum videoCMD: UInt16 {
+public enum videoCMD: UInt16 {
     case on,off = 0xED12
     
     //OutPut A - 27in LCD
     //In 1 - Out A
-    case A1 = 0xFE01
+    case A1, LGPS5 = 0xFE01
     //In 2 - Out A
-    case A2 = 0xFC03
+    case A2, LGATV = 0xFC03
     //In 3 - Out A
     case A3 = 0xFB04
     //In 4 - Out A
@@ -91,7 +100,7 @@ enum videoCMD: UInt16 {
     //In 1 - Out B
     case B1, ProjectorPS5 = 0xF807
     //In 2 - Out B
-    case B2, ProjectorATV = 0xF604
+    case B2, ProjectorATV = 0xF609
     //In 3 - Out AB
     case B3 = 0xF50A
     //In 4 - Out B

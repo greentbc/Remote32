@@ -99,7 +99,7 @@ func main() {
         fatalError("TX carrier issues")
     }
     var transmit_config = rmt_transmit_config_t(
-            loop_count: 0, // no loop
+            loop_count: 0,
             flags: rmt_transmit_config_t.__Unnamed_struct_flags()
         )
 
@@ -136,7 +136,7 @@ func main() {
     
     
     
-    
+    var hdmiTog = false
     
     
     logInfo("my_app","main loop")
@@ -177,7 +177,12 @@ func main() {
                     txMarkTime = esp_timer_get_time()
                     
                     //my HDMI switxher needs the code sent twice
-                    remote.transmit(scan_code: &codeProjectorPS5, doubleSend: true)
+                    //remote.transmit(scan_code: &codeProjectorPS5, doubleSend: true)
+                    if hdmiTog {remote.switchHDMI(videoCMD.ProjectorPS5)}
+                    else {remote.switchHDMI(videoCMD.ProjectorATV)}
+                    hdmiTog.toggle()
+                    
+                    
                     
                 }
                 
