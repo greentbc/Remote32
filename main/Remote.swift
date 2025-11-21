@@ -6,14 +6,17 @@
 // Class to contain my IR remote uses and to keep it separate from the encoder
 
 
+//goal to test and get projector IR working. First to test:
+//Think address is: 02FD
+//Epson power code: A05F
 
 
 let IR_RESOLUTION_HZ = UInt32(    1000000) // 1MHz resolution, 1 tick = 1us
-let IR_RX_GPIO_NUM = gpio_num_t(  19)
-let IR_TX_GPIO_NUM = gpio_num_t(  18)
+let IR_RX_GPIO_NUM = gpio_num_t(  3)
+let IR_TX_GPIO_NUM = gpio_num_t(  2)
 let IR_NEC_DECODE_MARGIN = UInt16(200)
-
-let NEC_LEADING_CODE_DURATION_0 = UInt16( 9700)//HDMI switcher remote seems to do 9800, not 9000 like NEC
+//Todo: check the tolerances to see what range works
+let NEC_LEADING_CODE_DURATION_0 = UInt16( 9800)//HDMI switcher remote seems to do 9800, not 9000 like NEC
 let NEC_LEADING_CODE_DURATION_1 = UInt16( 4500)
 let NEC_PAYLOAD_ZERO_DURATION_0 = UInt16( 560)
 let NEC_PAYLOAD_ZERO_DURATION_1 = UInt16( 560)
@@ -62,13 +65,18 @@ class IRRemote {
     
     func switchHDMI(_ cmd: videoCMD) {
         var scan_code = ir_nec_scan_code_t(
-            address: irAddresses.HDMI.rawValue,
+            address: deviceAddress.HDMI.rawValue,
             command: cmd.rawValue
         )
         
         transmit(scan_code: &scan_code, doubleSend: true)
     }
     
+    func isKnownAddress(_ address: UInt16) -> Bool {
+        guard let testAddress = deviceAddress(rawValue: address) else { return false }
+        return true
+        
+    }
     
     
 }
@@ -78,7 +86,7 @@ enum acCMD: UInt16 {
     case t74High,t74H = 0x8C6F
     
 }
-enum irAddresses: UInt16 {
+enum deviceAddress: UInt16  {
     case HDMI = 0x7F80
     case AC = 0xF508
 }

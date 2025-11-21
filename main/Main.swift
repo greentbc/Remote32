@@ -27,12 +27,17 @@
 //Set mode for rx disable?
 //I will need addresses and CMDs for HDMI,AC,Projector
 
+//Should change encoder to not have nec_parse_frame and parse_nec_frame
+
 
 
 @_cdecl("app_main")
 func main() {
 
     //Setup
+
+    let rxEnable = false//TODO exists before  True
+    
     
     var rx_channel: rmt_channel_handle_t? = nil
     var tx_channel: rmt_channel_handle_t? = nil
@@ -132,65 +137,58 @@ func main() {
     
     let remote = IRRemote(transmit_config: transmit_config, tx_channel: tx_channel, encoder: nec_encoder)
     var txMarkTime = esp_timer_get_time()
-    
-    
-    
-    
     var hdmiTog = false
     
     
     logInfo("my_app","main loop")
-    
-        while (true) {
+    while (true) {
             // wait for RX done signal
-            if (xQueueReceive(receive_queue, &rx_data, pdMS_TO_TICKS(1000)) == pdPASS) {
-
+        if (xQueueReceive(receive_queue, &rx_data, pdMS_TO_TICKS(1000)) == pdPASS) {
+            
+            if rxEnable {
                 // parse the receive symbols and print the result if valid
                 if let nec = parse_nec_frame(rx_data.received_symbols, rx_data.num_symbols) {
-                    
-                    //Check that it is my AC's address
-                    if (nec.address == 0xF508) {
-                        
-                        
-                        
-                        logInfo("ToAC", cmdToTempString(nec.command))
-                        
-                        
-                        
-                        
-                    }
-                    else {
+                    guard let receivedAddress = deviceAddress.init(rawValue: nec.address) else {
+                        logInfo("Remote", "Unknown address")
                         print("Address=\(hex(nec.address)), Command=\(hex(nec.command))\r\n")
+                        continue//TODO: Test this to make sur it has the correct level of continue. Should start receive again. But I think it will continue the while(true) loop
                     }
-                }
-                // start receive again
-                guard rmt_receive(rx_channel, raw_symbols, ((MemoryLayout<rmt_symbol_word_t>.stride)*64), &receive_config) == ESP_OK
-                else {
-                    fatalError("start receive failed")
-                }
-            } else {
-                var codeProjectorPS5 = ir_nec_scan_code_t(
-                    address: irAddresses.HDMI.rawValue,
-                    command: videoCMD.ProjectorPS5.rawValue
-                )
-                if (txMarkTime + 8000000 < esp_timer_get_time()){
-                    txMarkTime = esp_timer_get_time()
                     
-                    //my HDMI switxher needs the code sent twice
-                    //remote.transmit(scan_code: &codeProjectorPS5, doubleSend: true)
-                    if hdmiTog {remote.switchHDMI(videoCMD.ProjectorPS5)}
-                    else {remote.switchHDMI(videoCMD.ProjectorATV)}
-                    hdmiTog.toggle()
-                    
-                    
-                    
+                    //Check that it is known address
+                    switch receivedAddress {
+                    case deviceAddress.HDMI:
+                        logInfo("Remote", "HDMI Switcher")
+                        break
+                    case deviceAddress.AC:
+                        logInfo("Remote", "AC Unit")
+                        break
+                    default:
+                        logInfo("Remote", "Unknown address")
+                        
+                    }
                 }
                 
             }
+            // start receive again
+            guard rmt_receive(rx_channel, raw_symbols, ((MemoryLayout<rmt_symbol_word_t>.stride)*64), &receive_config) == ESP_OK
+            else {fatalError("start receive failed")}
         }
-//    }
-    
-    
-    
+        else {//else for nothing in the queue
+            if (txMarkTime + 6400000 < esp_timer_get_time()){
+                txMarkTime = esp_timer_get_time()
+                
+                var codeProjectorPS5 = ir_nec_scan_code_t(
+                    address: deviceAddress.HDMI.rawValue,
+                    command: videoCMD.ProjectorPS5.rawValue
+                )
+                //my HDMI switxher needs the code sent twice
+                //remote.transmit(scan_code: &codeProjectorPS5, doubleSend: true)
+                if hdmiTog {remote.switchHDMI(videoCMD.A3)}
+                else {remote.switchHDMI(videoCMD.A4)}
+                hdmiTog.toggle()
+                logInfo("ReMo", "Sent")
+            }
+        }
+    }
     
 }
